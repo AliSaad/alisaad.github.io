@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Calendar Solver</title>
+    <title>Daily Calendar Solver | Algorithm Lab</title>
     <style>
         body {
             background-color: #121212;
@@ -18,7 +18,7 @@
             background-color: #1a1a1a;
             padding: 30px;
             border-radius: 12px;
-            max-width: 650px;
+            max-width: 700px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             width: 100%;
         }
@@ -30,7 +30,7 @@
         
         .controls-bar {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 10px;
             background-color: #222;
             padding: 15px;
@@ -38,12 +38,12 @@
             margin-bottom: 20px;
         }
         select {
-            padding: 10px;
+            padding: 8px;
             background-color: #121212;
             color: white;
             border: 1px solid #444;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: bold;
             cursor: pointer;
         }
@@ -87,7 +87,7 @@
 <div class="container">
     <div class="header">
         <div class="title-block">
-            <h2 style="margin: 0;">Calendar Puzzle Solver</h2>
+            <h2 style="margin: 0;">Algorithm Sandbox</h2>
             <div class="status">Status: <span class="status-text" id="statusLabel">Ready</span></div>
         </div>
         <div class="subtitle" id="subtitleLabel"></div>
@@ -97,14 +97,19 @@
         <select id="selMonth"></select>
         <select id="selDate"></select>
         <select id="selDay"></select>
+        <select id="selAlg">
+            <option value="standard">Standard DFS</option>
+            <option value="smart" selected>Smart (Flood Fill)</option>
+            <option value="random">Random Chaos</option>
+        </select>
         <select id="selSpeed">
-            <option value="slow">Speed: Slow</option>
-            <option value="normal" selected>Speed: Normal</option>
-            <option value="fast">Speed: Fast</option>
-            <option value="instant">Speed: Instant</option>
+            <option value="slow">Slow</option>
+            <option value="normal" selected>Normal</option>
+            <option value="fast">Fast</option>
+            <option value="instant">Instant</option>
         </select>
     </div>
-    <button id="btnRun" class="btn-primary">Find All Solutions</button>
+    <button id="btnRun" class="btn-primary">Start Search</button>
     
     <div class="grid" id="boardGrid"></div>
     
@@ -175,6 +180,7 @@ const selMonth = document.getElementById('selMonth');
 const selDate = document.getElementById('selDate');
 const selDay = document.getElementById('selDay');
 const selSpeed = document.getElementById('selSpeed');
+const selAlg = document.getElementById('selAlg');
 
 ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"].forEach(m => selMonth.add(new Option(m, m)));
 for(let i=1; i<=31; i++) selDate.add(new Option(i.toString(), i.toString()));
@@ -184,8 +190,8 @@ selMonth.value = "JUN"; selDate.value = "10"; selDay.value = "WED";
 
 let gallery = [];
 let currentIndex = 0;
+let forceStop = false;
 
-// Initialize Grid HTML exactly once
 function initializeGridDOM() {
     gridEl.innerHTML = '';
     for(let r=0; r<6; r++) {
@@ -201,39 +207,27 @@ initializeGridDOM();
 
 function createEmptyBoard() {
     let board = Array(6).fill().map(() => Array(9).fill(1));
-    board[5][8] = 0; // Wall
+    board[5][8] = 0; 
     let m = COORD_MAP[selMonth.value]; let d = COORD_MAP[selDate.value]; let w = COORD_MAP[selDay.value];
     board[m[0]][m[1]] = -1; board[d[0]][d[1]] = -1; board[w[0]][w[1]] = -1;
     return board;
 }
 
-// Update only the colors to prevent flickering
 function renderBoard(board) {
     for(let r=0; r<6; r++) {
         for(let c=0; c<9; c++) {
             let val = board[r][c];
             let div = document.getElementById(`cell-${r}-${c}`);
             
-            if(val === 0) { 
-                div.style.backgroundColor = '#1a1a1a'; div.style.color = '#1a1a1a'; div.style.border = 'none'; div.style.boxShadow = 'none';
-            } 
-            else if(val === -1) { 
-                div.style.backgroundColor = '#0A0A0A'; div.style.color = '#FFF'; div.style.border = '2px dashed rgba(255,255,255,0.7)'; div.style.boxShadow = 'none';
-            } 
-            else if(val === 1) { 
-                div.style.backgroundColor = '#2A2A2A'; div.style.color = '#555'; div.style.border = 'none'; div.style.boxShadow = 'none';
-            } 
-            else {
-                div.style.backgroundColor = COLORS[(val - 2) % COLORS.length];
-                div.style.color = '#111';
-                div.style.border = 'none';
-                div.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.1)';
-            }
+            if(val === 0) { div.style.backgroundColor = '#1a1a1a'; div.style.color = '#1a1a1a'; div.style.border = 'none'; div.style.boxShadow = 'none'; } 
+            else if(val === -1) { div.style.backgroundColor = '#0A0A0A'; div.style.color = '#FFF'; div.style.border = '2px dashed rgba(255,255,255,0.7)'; div.style.boxShadow = 'none'; } 
+            else if(val === 1) { div.style.backgroundColor = '#2A2A2A'; div.style.color = '#555'; div.style.border = 'none'; div.style.boxShadow = 'none'; } 
+            else { div.style.backgroundColor = COLORS[(val - 2) % COLORS.length]; div.style.color = '#111'; div.style.border = 'none'; div.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.1)'; }
         }
     }
 }
 
-// --- ALGORITHM ---
+// --- ALGORITHMS ---
 function canPlace(board, piece, r, c) {
     if(r + piece.length > 6 || c + piece[0].length > 9) return false;
     for(let i=0; i<piece.length; i++) {
@@ -252,38 +246,93 @@ function placePiece(board, piece, r, c, id) {
     return newBoard;
 }
 
-function findEmpty(board) {
-    for(let r=0; r<6; r++) { for(let c=0; c<9; c++) { if(board[r][c] === 1) return [r, c]; } }
-    return null;
+// The Flood Fill Pruning Heuristic
+function isValidBoardState(board) {
+    let visited = Array(6).fill().map(() => Array(9).fill(false));
+    let dirs = [[0,1], [1,0], [0,-1], [-1,0]];
+    
+    for(let r=0; r<6; r++) {
+        for(let c=0; c<9; c++) {
+            if(board[r][c] === 1 && !visited[r][c]) {
+                let size = 0;
+                let q = [[r,c]];
+                visited[r][c] = true;
+                
+                while(q.length > 0) {
+                    let [currR, currC] = q.pop();
+                    size++;
+                    for(let [dr, dc] of dirs) {
+                        let nr = currR + dr, nc = currC + dc;
+                        if(nr >= 0 && nr < 6 && nc >= 0 && nc < 9 && board[nr][nc] === 1 && !visited[nr][nc]) {
+                            visited[nr][nc] = true;
+                            q.push([nr, nc]);
+                        }
+                    }
+                }
+                // If any isolated empty region is not divisible by 5, the 5-block pieces will never fit!
+                if (size % 5 !== 0) return false; 
+            }
+        }
+    }
+    return true;
+}
+
+function findEmpty(board, alg) {
+    let empties = [];
+    for(let r=0; r<6; r++) { 
+        for(let c=0; c<9; c++) { 
+            if(board[r][c] === 1) {
+                if(alg === 'standard' || alg === 'smart') return [r, c]; // Top-left scanning
+                empties.push([r,c]); // Gather for random
+            } 
+        } 
+    }
+    if(empties.length === 0) return null;
+    return empties[Math.floor(Math.random() * empties.length)]; // Random Chaos
 }
 
 async function solveAll() {
     let stack = [{ board: createEmptyBoard(), remaining: PIECES.map((_, i) => i) }];
     let iterations = 0;
     
-    // Determine the gearbox settings based on user selection
     let speedSetting = selSpeed.value;
-    let renderFreq = 20; 
-    let delayMs = 1;
+    let algSetting = selAlg.value;
     
-    if (speedSetting === 'slow') { renderFreq = 5; delayMs = 15; }
-    else if (speedSetting === 'fast') { renderFreq = 100; delayMs = 0; }
+    let renderFreq = 20; let delayMs = 1;
+    if (speedSetting === 'slow') { renderFreq = 5; delayMs = 25; }
+    else if (speedSetting === 'fast') { renderFreq = 200; delayMs = 0; }
 
     while(stack.length > 0) {
+        if (forceStop) return;
+        
         let { board, remaining } = stack.pop();
-        let empty = findEmpty(board);
+        
+        // The "Smart" Algorithm checks for doomed boards before expanding
+        if (algSetting === 'smart' && !isValidBoardState(board)) {
+            continue; 
+        }
+        
+        let empty = findEmpty(board, algSetting);
         
         if(!empty) {
             gallery.push(board);
-            statusLabel.innerText = `Calculating... Found: ${gallery.length}`;
+            statusLabel.innerText = `Found: ${gallery.length} | Iters: ${iterations}`;
             renderBoard(board);
             await new Promise(resolve => setTimeout(resolve, 50)); 
             continue;
         }
         
         let [r, c] = empty;
-        for(let pIdx of remaining) {
-            for(let orientation of PIECES[pIdx]) {
+        
+        // Random Chaos shuffles the pieces before trying them
+        let piecesToTry = [...remaining];
+        if (algSetting === 'random') piecesToTry.sort(() => Math.random() - 0.5);
+
+        for(let pIdx of piecesToTry) {
+            let orientations = PIECES[pIdx];
+            if (algSetting === 'random') orientations = [...orientations].sort(() => Math.random() - 0.5);
+            
+            for(let orientation of orientations) {
                 let startC = c - orientation[0].indexOf(1);
                 if(startC >= 0 && canPlace(board, orientation, r, startC)) {
                     stack.push({
@@ -296,26 +345,27 @@ async function solveAll() {
         
         iterations++;
         
-        // Instant Mode: Skip rendering entirely unless yielding to browser
         if (speedSetting === 'instant') {
             if (iterations % 500 === 0) {
-                statusLabel.innerText = `Calculating... Found: ${gallery.length}`;
+                statusLabel.innerText = `Iters: ${iterations} | Found: ${gallery.length}`;
                 await new Promise(resolve => setTimeout(resolve, 0));
             }
         } 
-        // Animated Modes
         else if (iterations % renderFreq === 0) { 
             renderBoard(board);
-            statusLabel.innerText = `Calculating... Found: ${gallery.length}`;
+            statusLabel.innerText = `Iters: ${iterations} | Found: ${gallery.length}`;
             await new Promise(resolve => setTimeout(resolve, delayMs)); 
         }
     }
 }
 
 btnRun.onclick = async () => {
-    gallery = []; currentIndex = 0;
-    btnRun.disabled = true; btnPrev.disabled = true; btnNext.disabled = true;
-    selMonth.disabled = true; selDate.disabled = true; selDay.disabled = true; selSpeed.disabled = true;
+    if (btnRun.innerText === "Stop Search") { forceStop = true; return; }
+    
+    gallery = []; currentIndex = 0; forceStop = false;
+    btnRun.innerText = "Stop Search"; btnRun.style.backgroundColor = "#ff5252";
+    btnPrev.disabled = true; btnNext.disabled = true;
+    selMonth.disabled = true; selDate.disabled = true; selDay.disabled = true; selSpeed.disabled = true; selAlg.disabled = true;
     subtitleLabel.innerText = '';
     
     statusLabel.innerText = 'Calculating...';
@@ -325,7 +375,10 @@ btnRun.onclick = async () => {
     await solveAll();
     let endTime = performance.now();
     
-    if(gallery.length > 0) {
+    btnRun.innerText = "Start Search"; btnRun.style.backgroundColor = "#4dd0e1";
+    if(forceStop) {
+        statusLabel.innerText = `Stopped early by user. Found ${gallery.length}.`;
+    } else if(gallery.length > 0) {
         statusLabel.innerText = `Search Complete in ${((endTime - startTime) / 1000).toFixed(1)}s!`;
         updatePagination();
     } else {
@@ -334,7 +387,7 @@ btnRun.onclick = async () => {
     }
     
     btnRun.disabled = false;
-    selMonth.disabled = false; selDate.disabled = false; selDay.disabled = false; selSpeed.disabled = false;
+    selMonth.disabled = false; selDate.disabled = false; selDay.disabled = false; selSpeed.disabled = false; selAlg.disabled = false;
 };
 
 function updatePagination() {
@@ -348,12 +401,11 @@ function updatePagination() {
 btnPrev.onclick = () => { if(currentIndex > 0) { currentIndex--; updatePagination(); } };
 btnNext.onclick = () => { if(currentIndex < gallery.length - 1) { currentIndex++; updatePagination(); } };
 
-const updatePreview = () => { if(!btnRun.disabled) renderBoard(createEmptyBoard()); };
+const updatePreview = () => { if(btnRun.innerText === "Start Search") renderBoard(createEmptyBoard()); };
 selMonth.addEventListener('change', updatePreview);
 selDate.addEventListener('change', updatePreview);
 selDay.addEventListener('change', updatePreview);
 
-// Init
 renderBoard(createEmptyBoard());
 </script>
 </body>
