@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Calendar Solver</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', Roboto, Helvetica, sans-serif;
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+            margin: 0;
+        }
+        .container {
+            background-color: #1a1a1a;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 650px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 100%;
+        }
+        .header-row { display: flex; justify-content: space-between; margin-bottom: 25px; font-size: 14px; }
+        .status { color: #888; }
+        .status-text { color: #4dd0e1; font-weight: bold; }
+        .subtitle { color: #e0e0e0; font-weight: bold; }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(9, 55px);
+            gap: 4px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .cell {
+            height: 55px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+        
+        .controls { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        button:hover:not(:disabled) { opacity: 0.8; }
+        button:disabled { background-color: #333 !important; color: #666 !important; cursor: not-allowed; }
+        .btn-primary { background-color: #4dd0e1; color: #121212; flex-grow: 1; font-size: 16px; }
+        .btn-nav { background-color: #3D5A80; color: white; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="margin-top: 0;">Multi-Solution Explorer</h2>
+    <div class="header-row">
+        <span class="status">Status: <span class="status-text" id="statusLabel">Ready</span></span>
+        <span class="subtitle" id="subtitleLabel">WED 10 JUN</span>
+    </div>
+    
+    <div class="grid" id="boardGrid"></div>
+    
+    <div class="controls">
+        <button id="btnPrev" class="btn-nav" disabled>◄ Previous</button>
+        <button id="btnRun" class="btn-primary">Find All Solutions</button>
+        <button id="btnNext" class="btn-nav" disabled>Next ►</button>
+    </div>
+</div>
+
+<script>
+// --- ALGORITHM & DATA ---
+const TEXT_LABELS = [
+    ["JAN", "FEB", "MAR", "APR", "1", "2", "3", "MON", "TUE"],
+    ["MAY", "4", "5", "6", "7", "8", "9", "WED", ""],
+    ["JUN", "10", "11", "12", "13", "31", "15", "THU", ""],
+    ["JUL", "16", "17", "18", "19", "20", "21", "FRI", "SAT"],
+    ["AUG", "22", "23", "24", "25", "26", "27", "SUN", ""],
+    ["SEP", "OCT", "NOV", "DEC", "28", "29", "30", "14", ""]
+];
+
+const COLORS = ["#5FA8D3", "#81B29A", "#E07A5F", "#F4A261", "#9D8189", "#F2CC8F", "#3D5A80", "#D4A373", "#E5989B", "#669BBC"];
+
+let targetBoard = Array(6).fill().map(() => Array(9).fill(1));
+targetBoard[5][8] = 0;   // Wall
+targetBoard[2][0] = -1;  // JUN
+targetBoard[2][1] = -1;  // 10
+targetBoard[1][7] = -1;  // WED
+
+const rawPieces = [
+    [[0,1,0],[0,1,1],[1,1,0]],
+    [[1,1,1],[1,0,1]],
+    [[1,1,1,1],[1,0,0,0]],
+    [[1,1,1],[1,1,0]],
+    [[1,1,1],[0,1,0],[0,1,0]],
+    [[0,0,1,1],[1,1,1,0]],
+    [[1,1,0],[0,1,0],[0,1,1]],
+    [[1,0,0],[1,0,0],[1,1,1]],
+    [[1,1,1,1,1]],
+    [[1,1,1,1],[0,1,0,0]]
+];
+
+// Matrix Helpers
+function rotate(matrix) {
+    return matrix[0].map((val, index) => matrix.map(row => row[index]).reverse());
+}
+function flip(matrix) {
+    return matrix.map(row => [...row].reverse());
+}
+function arraysEqual(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function getOrientations(piece, canFlip) {
+    let orientations = [];
+    let current = piece;
+    for(let i=0; i<4; i++) {
+        orientations.push(current);
+        if(canFlip) orientations.push(flip(current));
+        current = rotate(current);
+    }
+    // Remove duplicates
+    let unique = [];
+    orientations.forEach(o => {
+        if(!unique.some(u => arraysEqual(u, o))) unique.push(o);
+    });
+    return unique;
+}
+
+const PIECES = [
+    getOrientations(rawPieces[0], true),
+    ...rawPieces.slice(1).map(p => getOrientations(p, false))
+];
+
+// --- UI LOGIC ---
+const gridEl = document.getElementById('boardGrid');
+const statusLabel = document.getElementById('statusLabel');
+const subtitleLabel = document.getElementById('subtitleLabel');
+const btnRun = document.getElementById('btnRun');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+
+let gallery = [];
+let currentIndex = 0;
+let isCalculating = false;
+
+function renderBoard(board) {
+    gridEl.innerHTML = '';
+    for(let r=0; r<6; r++) {
+        for(let c=0; c<9; c++) {
+            let val = board[r][c];
+            let div = document.createElement('div');
+            div.className = 'cell';
+            div.innerText = TEXT_LABELS[r][c];
+            
+            if(val === 0) {
+                div.style.backgroundColor = '#1a1a1a';
+            } else if(val === -1) {
+                div.style.backgroundColor = '#0A0A0A';
+                div.style.color = '#FFF';
+                div.style.border = '2px dashed rgba(255,255,255,0.7)';
+            } else if(val === 1) {
+                div.style.backgroundColor = '#2A2A2A';
+                div.style.color = '#555';
+            } else {
+                let color = COLORS[(val - 2) % COLORS.length];
+                div.style.backgroundColor = color;
+                div.style.color = '#111';
+                div.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.1)';
+            }
+            gridEl.appendChild(div);
+        }
+    }
+}
+
+// --- ASYNC SOLVER ---
+function canPlace(board, piece, r, c) {
+    if(r + piece.length > 6 || c + piece[0].length > 9) return false;
+    for(let i=0; i<piece.length; i++) {
+        for(let j=0; j<piece[0].length; j++) {
+            if(piece[i][j] === 1 && board[r+i][c+j] !== 1) return false;
+        }
+    }
+    return true;
+}
+
+function placePiece(board, piece, r, c, id) {
+    let newBoard = board.map(row => [...row]);
+    for(let i=0; i<piece.length; i++) {
+        for(let j=0; j<piece[0].length; j++) {
+            if(piece[i][j] === 1) newBoard[r+i][c+j] = id;
+        }
+    }
+    return newBoard;
+}
+
+function findEmpty(board) {
+    for(let r=0; r<6; r++) {
+        for(let c=0; c<9; c++) {
+            if(board[r][c] === 1) return [r, c];
+        }
+    }
+    return null;
+}
+
+async function solveAll() {
+    let stack = [{ board: targetBoard, remaining: PIECES.map((_, i) => i) }];
+    let iterations = 0;
+
+    while(stack.length > 0) {
+        let { board, remaining } = stack.pop();
+        let empty = findEmpty(board);
+        
+        if(!empty) {
+            gallery.push(board);
+            subtitleLabel.innerText = `Found: ${gallery.length}`;
+            if(gallery.length === 1) renderBoard(board); // Show first hit immediately
+            continue;
+        }
+        
+        let [r, c] = empty;
+        for(let pIdx of remaining) {
+            for(let orientation of PIECES[pIdx]) {
+                let firstColOffset = orientation[0].indexOf(1);
+                let startC = c - firstColOffset;
+                if(startC >= 0 && canPlace(board, orientation, r, startC)) {
+                    let newRemaining = remaining.filter(id => id !== pIdx);
+                    stack.push({
+                        board: placePiece(board, orientation, r, startC, pIdx + 2),
+                        remaining: newRemaining
+                    });
+                }
+            }
+        }
+        
+        // Yield to browser every 500 checks so the UI doesn't freeze
+        iterations++;
+        if(iterations % 500 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+    }
+}
+
+btnRun.onclick = async () => {
+    gallery = [];
+    currentIndex = 0;
+    btnRun.disabled = true;
+    btnPrev.disabled = true;
+    btnNext.disabled = true;
+    statusLabel.innerText = 'Calculating (May take 1-2 minutes)...';
+    renderBoard(targetBoard);
+    
+    await solveAll();
+    
+    statusLabel.innerText = 'Search Complete!';
+    subtitleLabel.innerText = `Total Solutions: ${gallery.length}`;
+    btnRun.disabled = false;
+    updatePagination();
+};
+
+function updatePagination() {
+    if(gallery.length === 0) return;
+    renderBoard(gallery[currentIndex]);
+    subtitleLabel.innerText = `Viewing ${currentIndex + 1} of ${gallery.length}`;
+    btnPrev.disabled = currentIndex === 0;
+    btnNext.disabled = currentIndex === gallery.length - 1;
+}
+
+btnPrev.onclick = () => { if(currentIndex > 0) { currentIndex--; updatePagination(); } };
+btnNext.onclick = () => { if(currentIndex < gallery.length - 1) { currentIndex++; updatePagination(); } };
+
+// Init
+renderBoard(targetBoard);
+</script>
+</body>
+</html>
