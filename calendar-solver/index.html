@@ -26,6 +26,7 @@
         .title-block { display: flex; flex-direction: column; }
         .status { color: #888; font-size: 14px; margin-top: 5px; }
         .status-text { color: #4dd0e1; font-weight: bold; }
+        .subtitle { color: #e0e0e0; font-size: 14px; font-weight: bold; }
         
         .controls-bar {
             display: flex;
@@ -53,12 +54,12 @@
             font-weight: bold;
             cursor: pointer;
             transition: opacity 0.2s;
-            background-color: #4dd0e1;
-            color: #121212;
             font-size: 16px;
         }
         button:hover:not(:disabled) { opacity: 0.8; }
         button:disabled { background-color: #333 !important; color: #666 !important; cursor: not-allowed; }
+        .btn-primary { background-color: #4dd0e1; color: #121212; flex-grow: 1; }
+        .btn-nav { background-color: #3D5A80; color: white; width: 120px; }
 
         .grid {
             display: grid;
@@ -77,6 +78,7 @@
             font-size: 14px;
             transition: all 0.2s ease;
         }
+        .nav-bar { display: flex; justify-content: space-between; align-items: center; }
     </style>
 </head>
 <body>
@@ -87,20 +89,26 @@
             <h2 style="margin: 0;">Calendar Puzzle Solver</h2>
             <div class="status">Status: <span class="status-text" id="statusLabel">Ready</span></div>
         </div>
+        <div class="subtitle" id="subtitleLabel"></div>
     </div>
     
     <div class="controls-bar">
         <select id="selMonth"></select>
         <select id="selDate"></select>
         <select id="selDay"></select>
-        <button id="btnRun">Solve</button>
+        <button id="btnRun" class="btn-primary">Find All Solutions</button>
     </div>
     
     <div class="grid" id="boardGrid"></div>
+    
+    <div class="nav-bar">
+        <button id="btnPrev" class="btn-nav" disabled>◄ Previous</button>
+        <button id="btnNext" class="btn-nav" disabled>Next ►</button>
+    </div>
 </div>
 
 <script>
-// --- ALGORITHM & DATA ---
+// --- DATA & CONFIG ---
 const TEXT_LABELS = [
     ["JAN", "FEB", "MAR", "APR", "1", "2", "3", "MON", "TUE"],
     ["MAY", "4", "5", "6", "7", "8", "9", "WED", ""],
@@ -110,7 +118,6 @@ const TEXT_LABELS = [
     ["SEP", "OCT", "NOV", "DEC", "28", "29", "30", "14", ""]
 ];
 
-// Coordinate Map to tie user selections to the grid
 const COORD_MAP = {
     "JAN": [0,0], "FEB": [0,1], "MAR": [0,2], "APR": [0,3], "MAY": [1,0], "JUN": [2,0],
     "JUL": [3,0], "AUG": [4,0], "SEP": [5,0], "OCT": [5,1], "NOV": [5,2], "DEC": [5,3],
@@ -125,16 +132,10 @@ const COORD_MAP = {
 const COLORS = ["#5FA8D3", "#81B29A", "#E07A5F", "#F4A261", "#9D8189", "#F2CC8F", "#3D5A80", "#D4A373", "#E5989B", "#669BBC"];
 
 const rawPieces = [
-    [[0,1,0],[0,1,1],[1,1,0]], // P1 (Double-sided)
-    [[1,1,1],[1,0,1]],
-    [[1,1,1,1],[1,0,0,0]],
-    [[1,1,1],[1,1,0]],
-    [[1,1,1],[0,1,0],[0,1,0]],
-    [[0,0,1,1],[1,1,1,0]],
-    [[1,1,0],[0,1,0],[0,1,1]],
-    [[1,0,0],[1,0,0],[1,1,1]],
-    [[1,1,1,1,1]],
-    [[1,1,1,1],[0,1,0,0]]
+    [[0,1,0],[0,1,1],[1,1,0]], // P1 (Flip allowed)
+    [[1,1,1],[1,0,1]], [[1,1,1,1],[1,0,0,0]], [[1,1,1],[1,1,0]], 
+    [[1,1,1],[0,1,0],[0,1,0]], [[0,0,1,1],[1,1,1,0]], [[1,1,0],[0,1,0],[0,1,1]], 
+    [[1,0,0],[1,0,0],[1,1,1]], [[1,1,1,1,1]], [[1,1,1,1],[0,1,0,0]]
 ];
 
 function rotate(matrix) { return matrix[0].map((val, index) => matrix.map(row => row[index]).reverse()); }
@@ -142,8 +143,7 @@ function flip(matrix) { return matrix.map(row => [...row].reverse()); }
 function arraysEqual(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
 function getOrientations(piece, canFlip) {
-    let orientations = [];
-    let current = piece;
+    let orientations = []; let current = piece;
     for(let i=0; i<4; i++) {
         orientations.push(current);
         if(canFlip) orientations.push(flip(current));
@@ -154,43 +154,35 @@ function getOrientations(piece, canFlip) {
     return unique;
 }
 
-const PIECES = [
-    getOrientations(rawPieces[0], true),
-    ...rawPieces.slice(1).map(p => getOrientations(p, false))
-];
+const PIECES = [getOrientations(rawPieces[0], true), ...rawPieces.slice(1).map(p => getOrientations(p, false))];
 
 // --- UI SETUP ---
 const gridEl = document.getElementById('boardGrid');
 const statusLabel = document.getElementById('statusLabel');
+const subtitleLabel = document.getElementById('subtitleLabel');
 const btnRun = document.getElementById('btnRun');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
 
 const selMonth = document.getElementById('selMonth');
 const selDate = document.getElementById('selDate');
 const selDay = document.getElementById('selDay');
 
-// Populate Dropdowns
 ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"].forEach(m => selMonth.add(new Option(m, m)));
 for(let i=1; i<=31; i++) selDate.add(new Option(i.toString(), i.toString()));
 ["MON","TUE","WED","THU","FRI","SAT","SUN"].forEach(d => selDay.add(new Option(d, d)));
 
-// Set defaults to your original date
-selMonth.value = "JUN";
-selDate.value = "10";
-selDay.value = "WED";
+selMonth.value = "JUN"; selDate.value = "10"; selDay.value = "WED";
+
+let gallery = [];
+let currentIndex = 0;
 
 function createEmptyBoard() {
     let board = Array(6).fill().map(() => Array(9).fill(1));
-    board[5][8] = 0; // The Wall
+    board[5][8] = 0; // Wall
     
-    // Mask the user's selections
-    let mCoords = COORD_MAP[selMonth.value];
-    let dCoords = COORD_MAP[selDate.value];
-    let wCoords = COORD_MAP[selDay.value];
-    
-    board[mCoords[0]][mCoords[1]] = -1;
-    board[dCoords[0]][dCoords[1]] = -1;
-    board[wCoords[0]][wCoords[1]] = -1;
-    
+    let m = COORD_MAP[selMonth.value]; let d = COORD_MAP[selDate.value]; let w = COORD_MAP[selDay.value];
+    board[m[0]][m[1]] = -1; board[d[0]][d[1]] = -1; board[w[0]][w[1]] = -1;
     return board;
 }
 
@@ -200,21 +192,13 @@ function renderBoard(board) {
         for(let c=0; c<9; c++) {
             let val = board[r][c];
             let div = document.createElement('div');
-            div.className = 'cell';
-            div.innerText = TEXT_LABELS[r][c];
+            div.className = 'cell'; div.innerText = TEXT_LABELS[r][c];
             
-            if(val === 0) {
-                div.style.backgroundColor = '#1a1a1a';
-            } else if(val === -1) {
-                div.style.backgroundColor = '#0A0A0A';
-                div.style.color = '#FFF';
-                div.style.border = '2px dashed rgba(255,255,255,0.7)';
-            } else if(val === 1) {
-                div.style.backgroundColor = '#2A2A2A';
-                div.style.color = '#555';
-            } else {
-                let color = COLORS[(val - 2) % COLORS.length];
-                div.style.backgroundColor = color;
+            if(val === 0) { div.style.backgroundColor = '#1a1a1a'; } 
+            else if(val === -1) { div.style.backgroundColor = '#0A0A0A'; div.style.color = '#FFF'; div.style.border = '2px dashed rgba(255,255,255,0.7)'; } 
+            else if(val === 1) { div.style.backgroundColor = '#2A2A2A'; div.style.color = '#555'; } 
+            else {
+                div.style.backgroundColor = COLORS[(val - 2) % COLORS.length];
                 div.style.color = '#111';
                 div.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.1)';
             }
@@ -223,7 +207,7 @@ function renderBoard(board) {
     }
 }
 
-// --- ASYNC SOLVER (Fast First Match) ---
+// --- ALGORITHM ---
 function canPlace(board, piece, r, c) {
     if(r + piece.length > 6 || c + piece[0].length > 9) return false;
     for(let i=0; i<piece.length; i++) {
@@ -237,72 +221,65 @@ function canPlace(board, piece, r, c) {
 function placePiece(board, piece, r, c, id) {
     let newBoard = board.map(row => [...row]);
     for(let i=0; i<piece.length; i++) {
-        for(let j=0; j<piece[0].length; j++) {
-            if(piece[i][j] === 1) newBoard[r+i][c+j] = id;
-        }
+        for(let j=0; j<piece[0].length; j++) { if(piece[i][j] === 1) newBoard[r+i][c+j] = id; }
     }
     return newBoard;
 }
 
 function findEmpty(board) {
-    for(let r=0; r<6; r++) {
-        for(let c=0; c<9; c++) {
-            if(board[r][c] === 1) return [r, c];
-        }
-    }
+    for(let r=0; r<6; r++) { for(let c=0; c<9; c++) { if(board[r][c] === 1) return [r, c]; } }
     return null;
 }
 
-async function solveFirst() {
-    let initialBoard = createEmptyBoard();
-    let stack = [{ board: initialBoard, remaining: PIECES.map((_, i) => i) }];
+async function solveAll() {
+    let stack = [{ board: createEmptyBoard(), remaining: PIECES.map((_, i) => i) }];
     let iterations = 0;
 
     while(stack.length > 0) {
         let { board, remaining } = stack.pop();
         let empty = findEmpty(board);
         
-        if(!empty) return board; // Found a solution!
+        if(!empty) {
+            gallery.push(board);
+            statusLabel.innerText = `Calculating... Found: ${gallery.length}`;
+            if(gallery.length === 1) renderBoard(board); // Show first match instantly
+            continue;
+        }
         
         let [r, c] = empty;
         for(let pIdx of remaining) {
             for(let orientation of PIECES[pIdx]) {
-                let firstColOffset = orientation[0].indexOf(1);
-                let startC = c - firstColOffset;
+                let startC = c - orientation[0].indexOf(1);
                 if(startC >= 0 && canPlace(board, orientation, r, startC)) {
-                    let newRemaining = remaining.filter(id => id !== pIdx);
                     stack.push({
                         board: placePiece(board, orientation, r, startC, pIdx + 2),
-                        remaining: newRemaining
+                        remaining: remaining.filter(id => id !== pIdx)
                     });
                 }
             }
         }
         
-        // Yield to browser to prevent freezing
         iterations++;
-        if(iterations % 500 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 0));
-        }
+        if(iterations % 500 === 0) await new Promise(resolve => setTimeout(resolve, 0));
     }
-    return null; // No solution found
 }
 
 btnRun.onclick = async () => {
-    btnRun.disabled = true;
+    gallery = []; currentIndex = 0;
+    btnRun.disabled = true; btnPrev.disabled = true; btnNext.disabled = true;
     selMonth.disabled = true; selDate.disabled = true; selDay.disabled = true;
+    subtitleLabel.innerText = '';
     
-    statusLabel.innerText = 'Calculating (May take a few moments)...';
+    statusLabel.innerText = 'Calculating (May take 1-2 minutes)...';
     renderBoard(createEmptyBoard());
     
     let startTime = performance.now();
-    let solution = await solveFirst();
+    await solveAll();
     let endTime = performance.now();
-    let timeTaken = ((endTime - startTime) / 1000).toFixed(1);
     
-    if(solution) {
-        renderBoard(solution);
-        statusLabel.innerText = `Solved in ${timeTaken} seconds!`;
+    if(gallery.length > 0) {
+        statusLabel.innerText = `Search Complete in ${((endTime - startTime) / 1000).toFixed(1)}s!`;
+        updatePagination();
     } else {
         statusLabel.innerText = 'Failed: No solution exists for this date.';
         statusLabel.style.color = '#ff5252';
@@ -312,7 +289,17 @@ btnRun.onclick = async () => {
     selMonth.disabled = false; selDate.disabled = false; selDay.disabled = false;
 };
 
-// Listeners to update the board dynamically when dropdowns change
+function updatePagination() {
+    if(gallery.length === 0) return;
+    renderBoard(gallery[currentIndex]);
+    subtitleLabel.innerText = `Viewing ${currentIndex + 1} of ${gallery.length}`;
+    btnPrev.disabled = currentIndex === 0;
+    btnNext.disabled = currentIndex === gallery.length - 1;
+}
+
+btnPrev.onclick = () => { if(currentIndex > 0) { currentIndex--; updatePagination(); } };
+btnNext.onclick = () => { if(currentIndex < gallery.length - 1) { currentIndex++; updatePagination(); } };
+
 const updatePreview = () => { if(!btnRun.disabled) renderBoard(createEmptyBoard()); };
 selMonth.addEventListener('change', updatePreview);
 selDate.addEventListener('change', updatePreview);
