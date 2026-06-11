@@ -185,27 +185,79 @@ function createEmptyBoard() {
     return board;
 }
 
-function renderBoard(board) {
+// function renderBoard(board) {
+//     gridEl.innerHTML = '';
+//     for(let r=0; r<6; r++) {
+//         for(let c=0; c<9; c++) {
+//             let val = board[r][c];
+//             let div = document.createElement('div');
+//             div.className = 'cell'; div.innerText = TEXT_LABELS[r][c];
+            
+//             if(val === 0) { div.style.backgroundColor = '#1a1a1a'; } 
+//             else if(val === -1) { div.style.backgroundColor = '#0A0A0A'; div.style.color = '#FFF'; div.style.border = '2px dashed rgba(255,255,255,0.7)'; } 
+//             else if(val === 1) { div.style.backgroundColor = '#2A2A2A'; div.style.color = '#555'; } 
+//             else {
+//                 div.style.backgroundColor = COLORS[(val - 2) % COLORS.length];
+//                 div.style.color = '#111';
+//                 div.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.1)';
+//             }
+//             gridEl.appendChild(div);
+//         }
+//     }
+// }
+// 1. First, create the empty HTML grid cells exactly once
+function initializeGridDOM() {
     gridEl.innerHTML = '';
     for(let r=0; r<6; r++) {
         for(let c=0; c<9; c++) {
-            let val = board[r][c];
             let div = document.createElement('div');
-            div.className = 'cell'; div.innerText = TEXT_LABELS[r][c];
-            
-            if(val === 0) { div.style.backgroundColor = '#1a1a1a'; } 
-            else if(val === -1) { div.style.backgroundColor = '#0A0A0A'; div.style.color = '#FFF'; div.style.border = '2px dashed rgba(255,255,255,0.7)'; } 
-            else if(val === 1) { div.style.backgroundColor = '#2A2A2A'; div.style.color = '#555'; } 
-            else {
-                div.style.backgroundColor = COLORS[(val - 2) % COLORS.length];
-                div.style.color = '#111';
-                div.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.1)';
-            }
+            div.className = 'cell'; 
+            div.id = `cell-${r}-${c}`; // Give each cell a unique ID so we can find it later
+            div.innerText = TEXT_LABELS[r][c];
             gridEl.appendChild(div);
         }
     }
 }
 
+// Run this once when the page loads
+initializeGridDOM();
+
+// 2. Now, only update the COLORS of the existing cells so the CSS transition works!
+function renderBoard(board) {
+    for(let r=0; r<6; r++) {
+        for(let c=0; c<9; c++) {
+            let val = board[r][c];
+            let div = document.getElementById(`cell-${r}-${c}`); // Grab the existing cell
+            
+            if(val === 0) { 
+                div.style.backgroundColor = '#1a1a1a'; 
+                div.style.border = 'none';
+                div.style.color = '#1a1a1a';
+                div.style.boxShadow = 'none';
+            } 
+            else if(val === -1) { 
+                div.style.backgroundColor = '#0A0A0A'; 
+                div.style.color = '#FFF'; 
+                div.style.border = '2px dashed rgba(255,255,255,0.7)'; 
+                div.style.boxShadow = 'none';
+            } 
+            else if(val === 1) { 
+                div.style.backgroundColor = '#2A2A2A'; 
+                div.style.color = '#555'; 
+                div.style.border = '1px solid #2A2A2A';
+                div.style.boxShadow = 'none';
+            } 
+            else {
+                div.style.backgroundColor = COLORS[(val - 2) % COLORS.length];
+                div.style.color = '#111';
+                div.style.border = `1px solid ${COLORS[(val - 2) % COLORS.length]}`;
+                div.style.boxShadow = 'inset 0 0 0 1px rgba(0,0,0,0.1)';
+            }
+        }
+    }
+}
+
+    
 // --- ALGORITHM ---
 function canPlace(board, piece, r, c) {
     if(r + piece.length > 6 || c + piece[0].length > 9) return false;
