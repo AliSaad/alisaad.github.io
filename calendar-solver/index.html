@@ -29,13 +29,17 @@
         .subtitle { color: #e0e0e0; font-size: 14px; font-weight: bold; }
         
         .controls-bar {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            display: flex;
+            flex-wrap: wrap;
             gap: 10px;
             background-color: #222;
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
+        }
+        .controls-bar > * {
+            flex: 1 1 14%;
+            min-width: 85px;
         }
         select {
             padding: 8px;
@@ -60,6 +64,31 @@
         button:disabled { background-color: #333 !important; color: #666 !important; cursor: not-allowed; }
         
         .btn-primary { background-color: #4dd0e1; color: #121212; width: 100%; margin-bottom: 20px; }
+        .btn-secondary { 
+            background-color: #121212; 
+            color: #e0e0e0; 
+            border: 1px solid #444;
+            padding: 8px 12px; 
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #2a2a2a;
+            border-color: #666;
+            opacity: 1;
+        }
+        .btn-secondary svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
         .btn-nav { background-color: #3D5A80; color: white; width: 120px; }
 
         .grid {
@@ -87,13 +116,22 @@
 <div class="container">
     <div class="header">
         <div class="title-block">
-            <h2 style="margin: 0;">Calendar Puzzle Solver</h2>
+            <h2 style="margin: 0;">Algorithm Sandbox</h2>
             <div class="status">Status: <span class="status-text" id="statusLabel">Ready</span></div>
         </div>
         <div class="subtitle" id="subtitleLabel"></div>
     </div>
     
     <div class="controls-bar">
+        <button id="btnToday" class="btn-secondary">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            Today
+        </button>
         <select id="selMonth"></select>
         <select id="selDate"></select>
         <select id="selDay"></select>
@@ -126,7 +164,7 @@ const TEXT_LABELS = [
     ["MAY", "4", "5", "6", "7", "8", "9", "WED", ""],
     ["JUN", "10", "11", "12", "13", "31", "15", "THU", ""],
     ["JUL", "16", "17", "18", "19", "20", "21", "FRI", "SAT"],
-    ["AUG", "22", "23", "24", "25", "26", "27", "", "SUN"],
+    ["AUG", "22", "23", "24", "25", "26", "27", "SUN", ""],
     ["SEP", "OCT", "NOV", "DEC", "28", "29", "30", "14", ""]
 ];
 
@@ -138,7 +176,7 @@ const COORD_MAP = {
     "15": [2,6], "16": [3,1], "17": [3,2], "18": [3,3], "19": [3,4], "20": [3,5], "21": [3,6],
     "22": [4,1], "23": [4,2], "24": [4,3], "25": [4,4], "26": [4,5], "27": [4,6], "28": [5,4],
     "29": [5,5], "30": [5,6], "31": [2,5],
-    "MON": [0,7], "TUE": [0,8], "WED": [1,7], "THU": [2,7], "FRI": [3,7], "SAT": [3,8], "SUN": [4,8]
+    "MON": [0,7], "TUE": [0,8], "WED": [1,7], "THU": [2,7], "FRI": [3,7], "SAT": [3,8], "SUN": [4,7]
 };
 
 const COLORS = ["#5FA8D3", "#81B29A", "#E07A5F", "#F4A261", "#9D8189", "#F2CC8F", "#3D5A80", "#D4A373", "#E5989B", "#669BBC"];
@@ -175,6 +213,7 @@ const subtitleLabel = document.getElementById('subtitleLabel');
 const btnRun = document.getElementById('btnRun');
 const btnPrev = document.getElementById('btnPrev');
 const btnNext = document.getElementById('btnNext');
+const btnToday = document.getElementById('btnToday');
 
 const selMonth = document.getElementById('selMonth');
 const selDate = document.getElementById('selDate');
@@ -186,7 +225,19 @@ const selAlg = document.getElementById('selAlg');
 for(let i=1; i<=31; i++) selDate.add(new Option(i.toString(), i.toString()));
 ["MON","TUE","WED","THU","FRI","SAT","SUN"].forEach(d => selDay.add(new Option(d, d)));
 
-selMonth.value = "JUN"; selDate.value = "10"; selDay.value = "WED";
+// Set to Today's Date Logic
+function setToToday() {
+    const now = new Date();
+    const monthNames = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+    const dayNames = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+    
+    selMonth.value = monthNames[now.getMonth()];
+    selDate.value = now.getDate().toString();
+    selDay.value = dayNames[now.getDay()];
+}
+
+// Automatically load today's date on startup
+setToToday();
 
 let gallery = [];
 let currentIndex = 0;
@@ -246,7 +297,6 @@ function placePiece(board, piece, r, c, id) {
     return newBoard;
 }
 
-// The Flood Fill Pruning Heuristic
 function isValidBoardState(board) {
     let visited = Array(6).fill().map(() => Array(9).fill(false));
     let dirs = [[0,1], [1,0], [0,-1], [-1,0]];
@@ -269,7 +319,6 @@ function isValidBoardState(board) {
                         }
                     }
                 }
-                // If any isolated empty region is not divisible by 5, the 5-block pieces will never fit!
                 if (size % 5 !== 0) return false; 
             }
         }
@@ -282,13 +331,13 @@ function findEmpty(board, alg) {
     for(let r=0; r<6; r++) { 
         for(let c=0; c<9; c++) { 
             if(board[r][c] === 1) {
-                if(alg === 'standard' || alg === 'smart') return [r, c]; // Top-left scanning
-                empties.push([r,c]); // Gather for random
+                if(alg === 'standard' || alg === 'smart') return [r, c]; 
+                empties.push([r,c]); 
             } 
         } 
     }
     if(empties.length === 0) return null;
-    return empties[Math.floor(Math.random() * empties.length)]; // Random Chaos
+    return empties[Math.floor(Math.random() * empties.length)]; 
 }
 
 async function solveAll() {
@@ -307,7 +356,6 @@ async function solveAll() {
         
         let { board, remaining } = stack.pop();
         
-        // The "Smart" Algorithm checks for doomed boards before expanding
         if (algSetting === 'smart' && !isValidBoardState(board)) {
             continue; 
         }
@@ -324,7 +372,6 @@ async function solveAll() {
         
         let [r, c] = empty;
         
-        // Random Chaos shuffles the pieces before trying them
         let piecesToTry = [...remaining];
         if (algSetting === 'random') piecesToTry.sort(() => Math.random() - 0.5);
 
@@ -359,12 +406,13 @@ async function solveAll() {
     }
 }
 
+// --- EVENTS ---
 btnRun.onclick = async () => {
     if (btnRun.innerText === "Stop Search") { forceStop = true; return; }
     
     gallery = []; currentIndex = 0; forceStop = false;
     btnRun.innerText = "Stop Search"; btnRun.style.backgroundColor = "#ff5252";
-    btnPrev.disabled = true; btnNext.disabled = true;
+    btnPrev.disabled = true; btnNext.disabled = true; btnToday.disabled = true;
     selMonth.disabled = true; selDate.disabled = true; selDay.disabled = true; selSpeed.disabled = true; selAlg.disabled = true;
     subtitleLabel.innerText = '';
     
@@ -386,7 +434,7 @@ btnRun.onclick = async () => {
         statusLabel.style.color = '#ff5252';
     }
     
-    btnRun.disabled = false;
+    btnRun.disabled = false; btnToday.disabled = false;
     selMonth.disabled = false; selDate.disabled = false; selDay.disabled = false; selSpeed.disabled = false; selAlg.disabled = false;
 };
 
@@ -406,6 +454,12 @@ selMonth.addEventListener('change', updatePreview);
 selDate.addEventListener('change', updatePreview);
 selDay.addEventListener('change', updatePreview);
 
+btnToday.onclick = () => {
+    setToToday();
+    updatePreview();
+};
+
+// Final initialization piece
 renderBoard(createEmptyBoard());
 </script>
 </body>
